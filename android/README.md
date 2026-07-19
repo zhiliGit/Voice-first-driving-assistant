@@ -1,12 +1,17 @@
-# Android application
+# Android app
 
-Planned stack:
+## Run in mock mode
 
-- Kotlin
-- Jetpack Compose and Material 3
-- MVVM with Coroutines and StateFlow
-- Room for notes and reminders
-- AlarmManager for local reminders
-- WebRTC for the later Realtime voice phase
+Open this `android` directory in Android Studio and run the `app` configuration. With no backend URL, the app uses a deterministic local mock so the confirmation flow is immediately demonstrable.
 
-The first milestone is a typed request that calls `POST /agent/plan`, displays the proposed action, and requires confirmation before local execution.
+## Run with the GPT-5.6 backend
+
+Start the backend on the development computer, then build with:
+
+```bash
+./gradlew installDebug -PagentBaseUrl=http://10.0.2.2:8080
+```
+
+`10.0.2.2` maps the Android emulator to the host machine. For a physical device, provide a reachable HTTPS endpoint or the development computer's LAN address.
+
+The OpenAI API key stays in the backend environment; it is never placed in the Android app.
