@@ -1,0 +1,16 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+node_modules/
+dist/
+coverage/
+*.log
+.gradle/
+.idea/
+local.properties
+**/build/
+*.iml
+.DS_Store
+Thumbs.db
