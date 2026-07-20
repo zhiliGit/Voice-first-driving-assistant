@@ -2,10 +2,10 @@
 
 ## Huawei-compatible first version
 
-Version `0.2.0-huawei` uses standard Android APIs and does not require Google Play Services. It supports:
+Version `0.2.1-huawei` uses standard Android APIs and does not require Google Play Services. It supports:
 
 - Android and Huawei manufacturer detection
-- platform speech-recognition intent with microphone permission handling
+- direct Android `SpeechRecognizer` service integration with microphone permission handling
 - typed input when no speech service is installed
 - local mock action planning
 - connection to a separate agent backend

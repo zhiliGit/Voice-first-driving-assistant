@@ -1,15 +1,15 @@
 package com.zhiligit.voicefirstdrivingassistant
 
 import android.Manifest
-import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -43,33 +43,17 @@ import com.zhiligit.voicefirstdrivingassistant.model.PlannedAction
 import java.util.Locale
 
 class MainActivity : ComponentActivity() {
-    private lateinit var speechLauncher: ActivityResultLauncher<Intent>
-    private lateinit var microphonePermissionLauncher: ActivityResultLauncher<String>
+    private var speechRecognizer: SpeechRecognizer? = null
     private var transcriptCallback: ((String) -> Unit)? = null
     private var errorCallback: ((String) -> Unit)? = null
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-
-        speechLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-            if (result.resultCode == Activity.RESULT_OK) {
-                val transcript = result.data
-                    ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
-                    ?.firstOrNull()
-                if (transcript.isNullOrBlank()) {
-                    errorCallback?.invoke("No speech was recognized. You can still type the request.")
-                } else {
-                    transcriptCallback?.invoke(transcript)
-                }
-            } else {
-                errorCallback?.invoke("Voice input was cancelled. Typed input remains available.")
-            }
-        }
-
-        microphonePermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+    private val microphonePermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
             if (granted) launchSpeechRecognizer()
             else errorCallback?.invoke("Microphone permission is required for voice input.")
         }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
 
         setContent {
             MaterialTheme {
@@ -99,18 +83,64 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun launchSpeechRecognizer() {
-        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toLanguageTag())
-            putExtra(RecognizerIntent.EXTRA_PROMPT, "What should the driving assistant do?")
-        }
-        if (intent.resolveActivity(packageManager) == null) {
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
             errorCallback?.invoke(
-                "No speech recognition service is installed. Enable Huawei voice input, or type the request."
+                "No Android speech service is enabled. Enable Huawei AI Voice/voice input in Settings, or type the request."
             )
             return
         }
-        speechLauncher.launch(intent)
+
+        if (speechRecognizer == null) {
+            speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this).also { recognizer ->
+                recognizer.setRecognitionListener(object : RecognitionListener {
+                    override fun onReadyForSpeech(params: Bundle?) = Unit
+                    override fun onBeginningOfSpeech() = Unit
+                    override fun onRmsChanged(rmsdB: Float) = Unit
+                    override fun onBufferReceived(buffer: ByteArray?) = Unit
+                    override fun onEndOfSpeech() = Unit
+                    override fun onPartialResults(partialResults: Bundle?) = Unit
+                    override fun onEvent(eventType: Int, params: Bundle?) = Unit
+
+                    override fun onError(error: Int) {
+                        errorCallback?.invoke(recognitionErrorMessage(error))
+                    }
+
+                    override fun onResults(results: Bundle?) {
+                        val transcript = results
+                            ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                            ?.firstOrNull()
+                        if (transcript.isNullOrBlank()) {
+                            errorCallback?.invoke("No speech was recognized. You can still type the request.")
+                        } else {
+                            transcriptCallback?.invoke(transcript)
+                        }
+                    }
+                })
+            }
+        }
+
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toLanguageTag())
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
+        }
+        speechRecognizer?.startListening(intent)
+    }
+
+    private fun recognitionErrorMessage(error: Int): String = when (error) {
+        SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Microphone permission was denied."
+        SpeechRecognizer.ERROR_NETWORK,
+        SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Speech recognition could not reach its network service."
+        SpeechRecognizer.ERROR_NO_MATCH -> "I could not understand that. Please try again or type the request."
+        SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "No speech was detected. Please try again."
+        SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "Speech recognition is busy. Please wait and try again."
+        else -> "Speech recognition failed (error $error). You can still type the request."
+    }
+
+    override fun onDestroy() {
+        speechRecognizer?.destroy()
+        speechRecognizer = null
+        super.onDestroy()
     }
 
     private fun deviceName(): String =
