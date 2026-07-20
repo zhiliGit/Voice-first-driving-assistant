@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
   build:
-    name: Test and build debug APK
+    name: Test and build Huawei-compatible APK
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -44,10 +44,20 @@ jobs:
         working-directory: android
         run: ./gradlew testDebugUnitTest assembleDebug --stacktrace
 
-      - name: Upload debug APK
+      - name: Verify no Google-only runtime dependency
+        working-directory: android
+        shell: bash
+        run: |
+          ./gradlew :app:dependencies --configuration debugRuntimeClasspath > dependency-report.txt
+          if grep -E "com\.google\.android\.gms|com\.google\.firebase" dependency-report.txt; then
+            echo "Google-only dependency detected; Huawei compatibility check failed."
+            exit 1
+          fi
+
+      - name: Upload Huawei-compatible debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: voice-first-driving-assistant-debug
+          name: voice-first-driving-assistant-huawei-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 7

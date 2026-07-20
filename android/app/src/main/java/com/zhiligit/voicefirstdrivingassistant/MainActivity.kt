@@ -1,8 +1,16 @@
 package com.zhiligit.voicefirstdrivingassistant
 
+import android.Manifest
+import android.app.Activity
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
+import android.speech.RecognizerIntent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -24,30 +32,101 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.zhiligit.voicefirstdrivingassistant.model.PlannedAction
+import java.util.Locale
 
 class MainActivity : ComponentActivity() {
+    private lateinit var speechLauncher: ActivityResultLauncher<Intent>
+    private lateinit var microphonePermissionLauncher: ActivityResultLauncher<String>
+    private var transcriptCallback: ((String) -> Unit)? = null
+    private var errorCallback: ((String) -> Unit)? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        speechLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            if (result.resultCode == Activity.RESULT_OK) {
+                val transcript = result.data
+                    ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+                    ?.firstOrNull()
+                if (transcript.isNullOrBlank()) {
+                    errorCallback?.invoke("No speech was recognized. You can still type the request.")
+                } else {
+                    transcriptCallback?.invoke(transcript)
+                }
+            } else {
+                errorCallback?.invoke("Voice input was cancelled. Typed input remains available.")
+            }
+        }
+
+        microphonePermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted) launchSpeechRecognizer()
+            else errorCallback?.invoke("Microphone permission is required for voice input.")
+        }
+
         setContent {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize(), color = Color(0xFFF7F9FC)) {
-                    DrivingAssistantScreen()
+                    DrivingAssistantScreen(
+                        deviceName = deviceName(),
+                        isHuawei = Build.MANUFACTURER.equals("HUAWEI", ignoreCase = true),
+                        onStartVoiceInput = { onTranscript, onError ->
+                            transcriptCallback = onTranscript
+                            errorCallback = onError
+                            requestVoiceInput()
+                        }
+                    )
                 }
             }
         }
     }
+
+    private fun requestVoiceInput() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) ==
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            launchSpeechRecognizer()
+        } else {
+            microphonePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+
+    private fun launchSpeechRecognizer() {
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toLanguageTag())
+            putExtra(RecognizerIntent.EXTRA_PROMPT, "What should the driving assistant do?")
+        }
+        if (intent.resolveActivity(packageManager) == null) {
+            errorCallback?.invoke(
+                "No speech recognition service is installed. Enable Huawei voice input, or type the request."
+            )
+            return
+        }
+        speechLauncher.launch(intent)
+    }
+
+    private fun deviceName(): String =
+        listOf(Build.MANUFACTURER, Build.MODEL)
+            .filter { it.isNotBlank() }
+            .joinToString(" ")
+            .ifBlank { "Android device" }
 }
 
 @Composable
-private fun DrivingAssistantScreen(viewModel: MainViewModel = viewModel()) {
+private fun DrivingAssistantScreen(
+    deviceName: String,
+    isHuawei: Boolean,
+    onStartVoiceInput: (((String) -> Unit), ((String) -> Unit)) -> Unit,
+    viewModel: MainViewModel = viewModel()
+) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     Column(
         modifier = Modifier
@@ -56,16 +135,44 @@ private fun DrivingAssistantScreen(viewModel: MainViewModel = viewModel()) {
             .padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Text("Voice-First Driving Assistant", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+        Text(
+            "Voice-First Driving Assistant",
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold
+        )
         Text(
             if (state.isMockMode) "Demo mock mode" else "Connected to agent backend",
             color = if (state.isMockMode) Color(0xFF7A5A00) else Color(0xFF176B3A)
         )
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFFEAF4EE))
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    if (isHuawei) "Huawei-compatible mode" else "Android compatibility mode",
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFF176B3A)
+                )
+                Text(
+                    "$deviceName · No Google Play Services required",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        }
+        OutlinedButton(
+            onClick = { onStartVoiceInput(viewModel::updateRequest, viewModel::reportError) },
+            enabled = !state.isLoading,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Start voice input")
+        }
         OutlinedTextField(
             value = state.request,
             onValueChange = viewModel::updateRequest,
             modifier = Modifier.fillMaxWidth(),
             label = { Text("Driver request") },
+            supportingText = { Text("Voice recognition depends on the service installed on the device.") },
             minLines = 3,
             enabled = !state.isLoading
         )

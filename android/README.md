@@ -1,10 +1,23 @@
 # Android app
 
+## Huawei-compatible first version
+
+Version `0.2.0-huawei` uses standard Android APIs and does not require Google Play Services. It supports:
+
+- Android and Huawei manufacturer detection
+- platform speech-recognition intent with microphone permission handling
+- typed input when no speech service is installed
+- local mock action planning
+- connection to a separate agent backend
+- explicit confirmation before any action is accepted
+
+Huawei speech recognition availability depends on the voice service installed and enabled on the device. Typed input always remains available.
+
 ## Run in mock mode
 
-Open this `android` directory in Android Studio and run the `app` configuration. With no backend URL, the app uses a deterministic local mock so the confirmation flow is immediately demonstrable.
+Open this `android` directory in Android Studio and run the `app` configuration. With no backend URL, the app uses a deterministic local mock.
 
-## Run with the GPT-5.6 backend
+## Run with the backend
 
 Start the backend on the development computer, then build with:
 
@@ -12,6 +25,10 @@ Start the backend on the development computer, then build with:
 ./gradlew installDebug -PagentBaseUrl=http://10.0.2.2:8080
 ```
 
-`10.0.2.2` maps the Android emulator to the host machine. For a physical device, provide a reachable HTTPS endpoint or the development computer's LAN address.
+`10.0.2.2` maps an Android Studio emulator to the host computer. For Huawei Cloud Debugging or a physical Huawei phone, provide a reachable HTTPS endpoint.
 
-The OpenAI API key stays in the backend environment; it is never placed in the Android app.
+The OpenAI API key stays in the backend environment and is never placed in the APK.
+
+## Huawei testing
+
+Use the Android emulator for the initial UI and mock-flow test. Upload the GitHub Actions artifact `voice-first-driving-assistant-huawei-debug` to Huawei AppGallery Connect Cloud Debugging to validate it on a real remote Huawei device.

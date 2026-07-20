@@ -27,6 +27,10 @@ class MainViewModel : ViewModel() {
         _state.value = _state.value.copy(request = value, plan = null, result = null, error = null)
     }
 
+    fun reportError(message: String) {
+        _state.value = _state.value.copy(error = message, result = null)
+    }
+
     fun createPlan() {
         val request = _state.value.request.trim()
         if (request.isEmpty()) return
